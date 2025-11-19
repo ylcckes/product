@@ -223,6 +223,23 @@
             transition: transform 0.5s ease;
         }
 
+        /* 影片標記圖示 */
+        .video-badge {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            z-index: 2;
+        }
+
         .card-info {
             text-align: center;
         }
@@ -330,6 +347,26 @@
         }
         .close-modal:hover { color: #333; }
 
+        /* 影片容器 */
+        .video-container {
+            position: relative;
+            padding-bottom: 56.25%; /* 16:9 ratio */
+            height: 0;
+            overflow: hidden;
+            max-width: 100%;
+            background: #000;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none; /* 預設隱藏 */
+        }
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
         /* 表單樣式 */
         input, select, textarea {
             width: 100%;
@@ -395,8 +432,6 @@
 </header>
 
 <div class="container">
-    <!-- 瀏覽模式切換 (舊的模式切換按鈕已移除) -->
-
     <!-- 控制與篩選 (改為下拉選單) -->
     <div class="controls" id="filterContainer">
         <!-- 「全部作品」按鈕：重置篩選狀態 -->
@@ -450,8 +485,11 @@
         <span class="close-modal" onclick="toggleModal('uploadModal')">&times;</span>
         <h2 style="text-align:center; color: var(--primary-orange);">📤 上傳我的作品</h2>
         <form id="uploadForm">
-            <label>選擇圖片</label>
+            <label>封面圖片 (若為影片請上傳縮圖)</label>
             <input type="file" id="fileInput" accept="image/*" required>
+            
+            <label>🎥 YouTube 影片連結 (選填)</label>
+            <input type="text" id="youtubeInput" placeholder="例如：https://youtu.be/...">
             
             <label>作品名稱</label>
             <input type="text" id="titleInput" placeholder="例如：夢想中的城堡" required>
@@ -487,7 +525,15 @@
     <div class="modal-box" style="text-align:center;">
         <span class="close-modal" onclick="toggleModal('detailModal')">&times;</span>
         <h2 id="dTitle"></h2>
+        
+        <!-- 圖片顯示區 -->
         <img id="dImage" style="max-width:100%; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1); margin-bottom:15px;">
+        
+        <!-- 影片顯示區 -->
+        <div id="dVideo" class="video-container">
+            <iframe id="dVideoFrame" src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+
         <p style="color:#666;">
             作者：<strong id="dAuthor"></strong> (<span id="dClass"></span>)
         </p>
@@ -521,7 +567,7 @@
         <span class="close-modal" onclick="toggleModal('helpModal')">&times;</span>
         <h2>📘 GAS 系統安裝 (新版)</h2>
         <div style="background:#FFF3E0; padding:10px; border-radius:5px; font-size:0.9rem; margin-bottom:10px;">
-            ⚠️ <strong>注意：</strong> 本版本更新了資料庫結構，建議建立一個全新的試算表來使用。
+            ⚠️ <strong>注意：</strong> 本次更新新增了影片欄位，請務必重新部署 GAS 程式碼。
         </div>
         <ol style="font-size:0.9rem; padding-left:20px; line-height:1.6;">
             <li>建立一個新的 <a href="https://sheets.new" target="_blank">Google 試算表</a>。</li>
@@ -530,7 +576,7 @@
             <li>點選「部署」>「新增部署作業」> 類型選「網頁應用程式」。</li>
             <li>存取權限務必選「<strong>所有人 (Anyone)</strong>」。</li>
             <li>部署後，回到本網頁「設定」貼上新網址。</li>
-            <li><strong style="color:#d35400;">提示：</strong>系統會自動產生「Config」工作表，您可以去修改裡面的「班級清單」、「分類清單」與**「網站標題」**喔！</li>
+            <li><strong style="color:#d35400;">提示：</strong>系統會自動產生「Config」工作表。</li>
         </ol>
         <textarea class="code-block" readonly id="gasCodeBlock">
 function doGet(e) {
@@ -548,7 +594,6 @@ function doGet(e) {
   for (var i = 1; i < configData.length; i++) {
     if (configData[i][0]) classes.push(configData[i][0]);
     if (configData[i][1]) categories.push(configData[i][1]);
-    // NEW: 從第三欄讀取網站標題 (只取第一行資料)
     if (configData[i][2] && i === 1) { 
         websiteTitle = configData[i][2];
     }
@@ -560,7 +605,6 @@ function doGet(e) {
   data.shift(); // 移除標題
   
   // 轉換成物件陣列 (新作品在前)
-  // 資料結構: ID(0), Title(1), Author(2), Class(3), Category(4), Desc(5), Image(6), Views(7), Time(8)
   var works = data.map(function(r){
     return {
       id: r[0],
@@ -571,7 +615,8 @@ function doGet(e) {
       desc: r[5],
       image: r[6],
       views: r[7],
-      time: r[8]
+      time: r[8],
+      videoUrl: r[9] // 新增: YouTube 連結
     };
   }).reverse();
   
@@ -580,7 +625,7 @@ function doGet(e) {
     options: {
       classes: classes,
       categories: categories,
-      websiteTitle: websiteTitle // <-- NEW
+      websiteTitle: websiteTitle
     }
   };
 
@@ -596,22 +641,21 @@ function doPost(e) {
   
   if(json.type == "upload"){
     var id = new Date().getTime().toString();
-    // 新增 Class 欄位
     sheet.appendRow([
       id, 
       json.title, 
       json.author, 
-      json.className, // 班級
+      json.className,
       json.category, 
       json.desc, 
       json.image, 
       0, 
-      new Date().toLocaleString()
+      new Date().toLocaleString(),
+      json.videoUrl || "" // 新增: 儲存 YouTube 連結
     ]);
     return ContentService.createTextOutput(JSON.stringify({status:"ok"}));
   } else if(json.type == "view"){
     var rows = sheet.getDataRange().getValues();
-    // 瀏覽數在第 8 欄 (索引7)
     for(var i=1; i<rows.length; i++){
       if(String(rows[i][0]) == String(json.id)){
         var cell = sheet.getRange(i+1, 8);
@@ -624,26 +668,24 @@ function doPost(e) {
 }
 
 function setup(ss){
-  // 建立作品表
   if(!ss.getSheetByName("Artworks")){
     var s = ss.insertSheet("Artworks");
-    s.appendRow(["ID","標題","作者","班級","分類","描述","圖片Data","瀏覽數","時間"]);
+    // 更新標題列，增加 YouTube連結
+    s.appendRow(["ID","標題","作者","班級","分類","描述","圖片Data","瀏覽數","時間","YouTube連結"]);
   }
   
-  // 建立設定表
   if(!ss.getSheetByName("Config")){
     var c = ss.insertSheet("Config");
-    c.appendRow(["班級清單", "分類清單", "網站標題"]); // <-- CHANGED
-    // 預設值
+    c.appendRow(["班級清單", "分類清單", "網站標題"]); 
     var defaults = [
-      ["1甲", "繪畫", "快樂小學雲端藝廊"], // <-- CHANGED
+      ["1甲", "繪畫", "快樂小學雲端藝廊"], 
       ["2甲", "勞作", ""],
       ["3甲", "書法", ""],
       ["4甲", "其他", ""],
       ["5甲", ""],
       ["6甲", ""]
     ];
-    c.getRange(2, 1, defaults.length, 3).setValues(defaults); // <-- CHANGED
+    c.getRange(2, 1, defaults.length, 3).setValues(defaults);
   }
 }
         </textarea>
@@ -658,67 +700,59 @@ function setup(ss){
     let apiUrl = localStorage.getItem('art_gallery_gas_url') || "";
 
     // === Base64 編碼/解碼函式 ===
-    function encodeBase64(str) {
-        // 處理中文等 UTF-8 字元
-        return btoa(unescape(encodeURIComponent(str)));
-    }
-    function decodeBase64(str) {
-        try {
-            return decodeURIComponent(escape(atob(str)));
-        } catch (e) {
-            console.error("Base64 decoding failed:", e);
-            return null;
-        }
-    }
-    // === 🛠️ 剪貼簿兼容性修復函式 (使用 document.execCommand('copy')) ===
+    function encodeBase64(str) { return btoa(unescape(encodeURIComponent(str))); }
+    function decodeBase64(str) { try { return decodeURIComponent(escape(atob(str))); } catch (e) { return null; } }
+
+    // === 剪貼簿兼容性修復 ===
     function copyTextToClipboard(text) {
         const tempInput = document.createElement('textarea');
         tempInput.value = text;
-        // 隱藏元素並加入 DOM
         tempInput.style.position = 'absolute';
         tempInput.style.left = '-9999px';
         document.body.appendChild(tempInput);
-
         tempInput.select();
-        tempInput.setSelectionRange(0, 99999); // 適用於移動設備
-
+        tempInput.setSelectionRange(0, 99999);
         try {
             const successful = document.execCommand('copy');
             document.body.removeChild(tempInput);
             return successful;
         } catch (err) {
-            console.error('Fallback clipboard copy failed', err);
             document.body.removeChild(tempInput);
             return false;
         }
     }
-    // === 剪貼簿兼容性修復函式 END ===
+
+    // === YouTube URL 解析函式 ===
+    function getYouTubeEmbedUrl(url) {
+        if (!url) return null;
+        // 支援多種 YouTube 網址格式：youtu.be, youtube.com/watch?v=, youtube.com/embed/
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        if (match && match[2].length === 11) {
+            return `https://www.youtube.com/embed/${match[2]}`;
+        }
+        return null;
+    }
 
     // 初始化
     window.onload = function() {
         const params = new URLSearchParams(window.location.search);
-        const encodedUrlParam = params.get('gas'); // 讀取 base64 編碼的 GAS URL
-        const viewMode = params.get('view');        // 讀取新的 view 參數
+        const encodedUrlParam = params.get('gas');
+        const viewMode = params.get('view');
         let tempApiUrl = null;
         
-        // 1. 處理 GAS 網址參數
         if(encodedUrlParam) {
             tempApiUrl = decodeBase64(encodedUrlParam);
-            
             if(tempApiUrl) {
                 apiUrl = tempApiUrl;
                 localStorage.setItem('art_gallery_gas_url', apiUrl);
-                console.log("✅ GAS URL Decoded and Set.");
             }
         }
 
-        // 2. 處理分享模式參數
         if (viewMode === 'share') {
             document.body.classList.add('share-view');
-            console.log("✅ Share View Mode Activated (Buttons Hidden).");
         }
         
-        // 清理網址參數 (避免網址列太長)
         if (encodedUrlParam || viewMode) {
              window.history.replaceState({}, document.title, window.location.pathname);
         }
@@ -730,7 +764,6 @@ function setup(ss){
         } else {
             document.querySelector('.loading-container').innerHTML = 
                 `<p>👋 歡迎！請先設定 GAS 網址。</p>`;
-            // 初始化時仍需嘗試填充下拉選單，以防萬一
             populateFilterDropdowns();
         }
     };
@@ -741,28 +774,20 @@ function setup(ss){
             .then(res => res.json())
             .then(data => {
                 worksData = data.works || [];
-                if (data.options) {
-                    optionsData = data.options;
-                }
+                if (data.options) optionsData = data.options;
                 
-                // NEW: 更新網頁標題
                 const appTitleElement = document.getElementById('appTitle');
                 const newTitle = data.options.websiteTitle; 
-
                 if (newTitle && newTitle.trim().length > 0) {
                     appTitleElement.innerHTML = `🎨 ${newTitle}`;
                     document.title = newTitle;
-                    console.log('✅ 網站標題已從 GAS 更新為:', newTitle);
-                } else {
-                    console.log('⚠️ GAS 網站標題欄位（Config!C2）為空，請檢查試算表。');
                 }
 
-                // 若 GAS 還沒回傳 options (舊版相容)，給預設值
                 if (optionsData.classes.length === 0) optionsData.classes = ["1甲","2甲","3甲","4甲","5甲","6甲"];
                 if (optionsData.categories.length === 0) optionsData.categories = ["繪畫","勞作","書法","其他"];
 
                 renderGallery(worksData);
-                populateFilterDropdowns(); // NEW: 填入下拉選單
+                populateFilterDropdowns();
                 populateUploadForm();
             })
             .catch(err => {
@@ -772,72 +797,50 @@ function setup(ss){
             });
     }
 
-    // NEW: 填入篩選下拉選單的選項
+    // 填入下拉選單
     function populateFilterDropdowns() {
         const classFilter = document.getElementById('classFilterSelect');
         const categoryFilter = document.getElementById('categoryFilterSelect');
         
-        // 1. 班級篩選選單
         classFilter.innerHTML = '<option value="all">依班級 (全部)</option>';
-        optionsData.classes.forEach(c => {
-            classFilter.innerHTML += `<option value="${c}">${c}</option>`;
-        });
+        optionsData.classes.forEach(c => classFilter.innerHTML += `<option value="${c}">${c}</option>`);
 
-        // 2. 分類篩選選單
         categoryFilter.innerHTML = '<option value="all">依類別 (全部)</option>';
-        optionsData.categories.forEach(c => {
-            categoryFilter.innerHTML += `<option value="${c}">${c}</option>`;
-        });
+        optionsData.categories.forEach(c => categoryFilter.innerHTML += `<option value="${c}">${c}</option>`);
     }
 
-    // 填入上傳表單的選單
     function populateUploadForm() {
         const classSelect = document.getElementById('classInput');
         const catSelect = document.getElementById('categoryInput');
         
         classSelect.innerHTML = '<option value="">選擇班級</option>';
-        optionsData.classes.forEach(c => {
-            classSelect.innerHTML += `<option value="${c}">${c}</option>`;
-        });
+        optionsData.classes.forEach(c => classSelect.innerHTML += `<option value="${c}">${c}</option>`);
 
         catSelect.innerHTML = '<option value="">選擇分類</option>';
-        optionsData.categories.forEach(c => {
-            catSelect.innerHTML += `<option value="${c}">${c}</option>`;
-        });
+        optionsData.categories.forEach(c => catSelect.innerHTML += `<option value="${c}">${c}</option>`);
     }
 
-    // NEW: 核心過濾邏輯 (下拉選單觸發)
     function filterByDropdown() {
         const selectedClass = document.getElementById('classFilterSelect').value;
         const selectedCategory = document.getElementById('categoryFilterSelect').value;
-
-        // 重置 All 按鈕的 active 狀態
         document.getElementById('allBtn').classList.remove('active');
 
-        // 執行過濾
         const filtered = worksData.filter(item => {
             const classMatch = selectedClass === 'all' || item.className === selectedClass;
             const categoryMatch = selectedCategory === 'all' || item.category === selectedCategory;
             return classMatch && categoryMatch;
         });
-
         renderGallery(filtered);
     }
 
-    // NEW: 重置所有篩選 (全部作品按鈕觸發)
     function resetFilters(btn) {
         document.getElementById('classFilterSelect').value = 'all';
         document.getElementById('categoryFilterSelect').value = 'all';
-        
-        // 確保只有「全部作品」按鈕有 active 樣式
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active'); 
-        
-        renderGallery(worksData); // 顯示所有作品
+        renderGallery(worksData);
     }
 
-
-    // 渲染畫廊
     function renderGallery(data) {
         const grid = document.getElementById('galleryGrid');
         grid.innerHTML = "";
@@ -851,9 +854,14 @@ function setup(ss){
             const card = document.createElement('div');
             card.className = 'card';
             card.onclick = () => showDetail(item);
+            
+            // 檢查是否有影片連結，若有則顯示播放圖示
+            const videoIcon = item.videoUrl ? '<div class="video-badge">▶️</div>' : '';
+
             card.innerHTML = `
                 <div class="card-img-box">
                     <img src="${item.image}" loading="lazy" alt="${item.title}">
+                    ${videoIcon}
                 </div>
                 <div class="card-info">
                     <div class="card-title">${item.title}</div>
@@ -868,68 +876,89 @@ function setup(ss){
         });
     }
 
-    // 顯示詳情
     function showDetail(item) {
         document.getElementById('dTitle').innerText = item.title;
         document.getElementById('dAuthor').innerText = item.author;
         document.getElementById('dClass').innerText = item.className || '';
         document.getElementById('dCategory').innerText = item.category;
         document.getElementById('dDesc').innerText = item.desc || "(作者沒有留下介紹)";
-        document.getElementById('dImage').src = item.image;
         document.getElementById('dViews').innerText = item.views;
+
+        const imgEl = document.getElementById('dImage');
+        const videoContainer = document.getElementById('dVideo');
+        const iframe = document.getElementById('dVideoFrame');
+        
+        const embedUrl = getYouTubeEmbedUrl(item.videoUrl);
+
+        if (embedUrl) {
+            // 有影片：隱藏圖片，顯示 iframe
+            imgEl.style.display = 'none';
+            videoContainer.style.display = 'block';
+            iframe.src = embedUrl;
+        } else {
+            // 無影片：顯示圖片，隱藏 iframe
+            imgEl.src = item.image;
+            imgEl.style.display = 'block';
+            videoContainer.style.display = 'none';
+            iframe.src = ''; // 清空 src 停止播放
+        }
         
         toggleModal('detailModal');
         fetch(apiUrl, { method: 'POST', body: JSON.stringify({type: 'view', id: item.id}) });
     }
 
-    // 🔒 密碼檢查
+    // 關閉 Modal 時也要停止影片播放
+    function closeModalCustom(id) {
+        document.getElementById(id).style.display = 'none';
+        if (id === 'detailModal') {
+            document.getElementById('dVideoFrame').src = '';
+        }
+    }
+
     function checkPassword(e) {
         e.preventDefault();
-        const pwd = document.getElementById('authPassword').value;
-        if(pwd === 'ckes5892090') {
+        if(document.getElementById('authPassword').value === 'ckes5892090') {
             toggleModal('passwordModal');
             document.getElementById('authPassword').value = '';
             toggleModal('uploadModal');
         } else {
-            alert('❌ 密碼錯誤，請重新輸入！');
+            alert('❌ 密碼錯誤！');
         }
     }
 
-    // 上傳表單處理
     document.getElementById('uploadForm').onsubmit = async function(e) {
         e.preventDefault();
         if(!apiUrl) return alert("請先設定 GAS 網址！");
 
         const btn = document.getElementById('submitBtn');
-        btn.innerText = "正在處理圖片...";
+        btn.innerText = "正在處理...";
         btn.disabled = true;
 
         try {
             const file = document.getElementById('fileInput').files[0];
+            const youtubeUrl = document.getElementById('youtubeInput').value;
             const base64 = await compressImage(file, 800);
 
             const payload = {
                 type: 'upload',
                 title: document.getElementById('titleInput').value,
                 author: document.getElementById('authorInput').value,
-                className: document.getElementById('classInput').value, // 新增
+                className: document.getElementById('classInput').value,
                 category: document.getElementById('categoryInput').value,
                 desc: document.getElementById('descInput').value,
-                image: base64
+                image: base64,
+                videoUrl: youtubeUrl // 傳送 YouTube 連結
             };
 
-            btn.innerText = "正在上傳至雲端...";
-            
+            btn.innerText = "上傳中...";
             await fetch(apiUrl, { method: 'POST', body: JSON.stringify(payload) });
 
             alert("🎉 上傳成功！");
             toggleModal('uploadModal');
             document.getElementById('uploadForm').reset();
             fetchData();
-
         } catch (err) {
-            alert("❌ 發生錯誤：" + err);
-            console.error(err);
+            alert("❌ 錯誤：" + err);
         } finally {
             btn.innerText = "確認上傳";
             btn.disabled = false;
@@ -963,7 +992,7 @@ function setup(ss){
         if(url) {
             localStorage.setItem('art_gallery_gas_url', url);
             apiUrl = url;
-            alert("✅ 設定已儲存，重新載入資料！");
+            alert("設定已儲存！");
             toggleModal('settingsModal');
             fetchData();
         }
@@ -971,40 +1000,45 @@ function setup(ss){
 
     function generateShareLink() {
         if(!apiUrl) return alert("請先儲存 GAS 網址！");
-        
-        const encodedGasUrl = encodeBase64(apiUrl); // Base64 編碼
+        const encodedGasUrl = encodeBase64(apiUrl);
         const baseUrl = window.location.href.split('?')[0];
-        
-        // 使用 gas 參數傳遞 Base64 編碼後的 URL，並使用 view=share 參數控制隱藏按鈕
-        const shareUrl = `${baseUrl}?gas=${encodedGasUrl}&view=share`; 
+        const shareUrl = `${baseUrl}?gas=${encodedGasUrl}&view=share`;
         
         if (copyTextToClipboard(shareUrl)) {
-             alert("連結已複製！(Base64 編碼)");
+             alert("連結已複製！");
         } else {
-             alert("複製失敗，請手動複製此網址：\n" + shareUrl);
+             alert("複製失敗：" + shareUrl);
         }
     }
 
     function copyCode() {
         const code = document.getElementById('gasCodeBlock');
         code.select();
-        
         try {
             document.execCommand('copy');
-            alert("GAS 程式碼已複製！");
+            alert("已複製代碼！");
         } catch (err) {
-            console.error('Failed to copy using execCommand:', err);
-            alert("複製失敗，請手動選取並複製代碼。");
+            alert("複製失敗");
         }
     }
 
     function toggleModal(id) {
         const el = document.getElementById(id);
-        el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
+        if (el.style.display === 'flex') {
+            closeModalCustom(id);
+        } else {
+            el.style.display = 'flex';
+        }
     }
 
     window.onclick = function(e) {
-        if(e.target.classList.contains('modal-overlay')) e.target.style.display = 'none';
+        if(e.target.classList.contains('modal-overlay')) {
+            // 點擊背景關閉時，如果是詳情頁，也需要停止影片
+            if (e.target.id === 'detailModal') {
+                document.getElementById('dVideoFrame').src = '';
+            }
+            e.target.style.display = 'none';
+        }
     }
 </script>
 
