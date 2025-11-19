@@ -657,6 +657,19 @@ function setup(ss){
     let optionsData = { classes: [], categories: [] };
     let apiUrl = localStorage.getItem('art_gallery_gas_url') || "";
 
+    // === Base64 編碼/解碼函式 ===
+    function encodeBase64(str) {
+        // 處理中文等 UTF-8 字元
+        return btoa(unescape(encodeURIComponent(str)));
+    }
+    function decodeBase64(str) {
+        try {
+            return decodeURIComponent(escape(atob(str)));
+        } catch (e) {
+            console.error("Base64 decoding failed:", e);
+            return null;
+        }
+    }
     // === 🛠️ 剪貼簿兼容性修復函式 (使用 document.execCommand('copy')) ===
     function copyTextToClipboard(text) {
         const tempInput = document.createElement('textarea');
@@ -684,14 +697,30 @@ function setup(ss){
     // 初始化
     window.onload = function() {
         const params = new URLSearchParams(window.location.search);
-        const urlParam = params.get('gas');
+        const encodedUrlParam = params.get('gas'); // 讀取 base64 編碼的 GAS URL
+        const viewMode = params.get('view');        // 讀取新的 view 參數
+        let tempApiUrl = null;
         
-        // 檢查是否有 gas 參數，如果有，則認定為家長分享模式
-        if(urlParam) {
-            apiUrl = urlParam;
-            localStorage.setItem('art_gallery_gas_url', apiUrl);
-            window.history.replaceState({}, document.title, window.location.pathname);
-            document.body.classList.add('share-view'); // NEW: 添加 class 來隱藏按鈕
+        // 1. 處理 GAS 網址參數
+        if(encodedUrlParam) {
+            tempApiUrl = decodeBase64(encodedUrlParam);
+            
+            if(tempApiUrl) {
+                apiUrl = tempApiUrl;
+                localStorage.setItem('art_gallery_gas_url', apiUrl);
+                console.log("✅ GAS URL Decoded and Set.");
+            }
+        }
+
+        // 2. 處理分享模式參數
+        if (viewMode === 'share') {
+            document.body.classList.add('share-view');
+            console.log("✅ Share View Mode Activated (Buttons Hidden).");
+        }
+        
+        // 清理網址參數 (避免網址列太長)
+        if (encodedUrlParam || viewMode) {
+             window.history.replaceState({}, document.title, window.location.pathname);
         }
         
         document.getElementById('gasUrl').value = apiUrl;
@@ -942,11 +971,15 @@ function setup(ss){
 
     function generateShareLink() {
         if(!apiUrl) return alert("請先儲存 GAS 網址！");
+        
+        const encodedGasUrl = encodeBase64(apiUrl); // Base64 編碼
         const baseUrl = window.location.href.split('?')[0];
-        const shareUrl = `${baseUrl}?gas=${encodeURIComponent(apiUrl)}`;
+        
+        // 使用 gas 參數傳遞 Base64 編碼後的 URL，並使用 view=share 參數控制隱藏按鈕
+        const shareUrl = `${baseUrl}?gas=${encodedGasUrl}&view=share`; 
         
         if (copyTextToClipboard(shareUrl)) {
-             alert("連結已複製！");
+             alert("連結已複製！(Base64 編碼)");
         } else {
              alert("複製失敗，請手動複製此網址：\n" + shareUrl);
         }
